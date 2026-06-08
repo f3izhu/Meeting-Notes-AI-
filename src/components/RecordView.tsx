@@ -70,27 +70,37 @@ export default function RecordView() {
   };
 
   const stopRecording = async () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
+    try {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        await audioContextRef.current.close().catch(console.error);
+      }
+    } catch (err) {
+      console.error("Error stopping recording: ", err);
     }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-    }
-    if (audioContextRef.current) {
-      audioContextRef.current.close();
-    }
+
     clearInterval(meterIntervalRef.current);
+    clearInterval(intervalRef.current);
     setDbfs(-100);
 
-    // Save mocked meeting record
-    await db.meetings.add({
-      id: Math.random().toString(36).substring(2, 9),
-      title: `Meeting ${format(new Date(), 'MMM do, h:mm a')}`,
-      createdAt: Date.now(),
-      duration: duration,
-      transcript: "This is a placeholder transcript from the local recording.",
-      summary: "Local recording completed."
-    });
+    try {
+      // Save mocked meeting record
+      await db.meetings.add({
+        id: Math.random().toString(36).substring(2, 9),
+        title: `Meeting ${format(new Date(), 'MMM do, h:mm a')}`,
+        createdAt: Date.now(),
+        duration: duration,
+        transcript: "This is a placeholder transcript from the local recording.",
+        summary: "Local recording completed."
+      });
+    } catch (err) {
+      console.error("Error saving meeting: ", err);
+    }
 
     setIsRecording(false);
     setIsPaused(false);
