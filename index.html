@@ -7,6 +7,14 @@
     <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
     <link rel="apple-touch-icon" href="/icon-192.svg" />
     <title>Meeting Notes AI</title>
+    <script>
+      window.onerror = function(message, source, lineno, colno, error) {
+        document.body.innerHTML += '<div style="color:red; background: white; z-index: 9999; position: absolute; top:0; left:0; width: 100vw; padding: 20px;">' + message + '<br>' + (error ? error.stack : '') + '</div>';
+      };
+      window.addEventListener('unhandledrejection', function(event) {
+        document.body.innerHTML += '<div style="color:red; background: white; z-index: 9999; position: absolute; top:0; left:0; width: 100vw; padding: 20px;">' + event.reason + '</div>';
+      });
+    </script>
   </head>
   <body>
     <div id="root"></div>
