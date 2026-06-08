@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { format } from 'date-fns';
 import { useStore } from '../store';
-import { Mic2, Square, Pause, AlertCircle, FileAudio, Settings, ExternalLink } from 'lucide-react';
+import { Mic2, Square, Pause, FileAudio, Settings } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { db } from '../lib/db';
 
 export default function RecordView() {
   const [isRecording, setIsRecording] = useState(false);
@@ -10,36 +11,108 @@ export default function RecordView() {
   const [duration, setDuration] = useState(0);
   const [dbfs, setDbfs] = useState(-100);
   
-  // Minimal placeholder implementation for mic access and volume meter
-  // In a real PWA you'd use MediaRecorder API here
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const intervalRef = useRef<number | undefined>(undefined);
+  const meterIntervalRef = useRef<number | undefined>(undefined);
+
   useEffect(() => {
-    let interval: number;
-    let meterInterval: number;
-    
     if (isRecording && !isPaused) {
-      interval = window.setInterval(() => setDuration(d => d + 1), 1000);
-      meterInterval = window.setInterval(() => {
-        // Mock audio level bouncing between -80 and -10 dB roughly
-        setDbfs(-60 + Math.random() * 50);
-      }, 100);
-    } else {
-      setDbfs(-100); // Resting state
+      intervalRef.current = window.setInterval(() => setDuration(d => d + 1), 1000);
     }
     
     return () => {
-      clearInterval(interval);
-      clearInterval(meterInterval);
+      clearInterval(intervalRef.current);
     };
   }, [isRecording, isPaused]);
 
-  const toggleRecord = () => {
-    if (isRecording) {
-      setIsRecording(false);
-      setDuration(0);
-      // Logic to process recording and save Meeting would go here
-    } else {
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      
+      const audioContext = new AudioContext();
+      audioContextRef.current = audioContext;
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      analyserRef.current = analyser;
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      meterIntervalRef.current = window.setInterval(() => {
+        if (!analyserRef.current) return;
+        analyserRef.current.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i];
+        }
+        const average = sum / dataArray.length;
+        // Map 0-255 to roughly -100 to 0 dBFS
+        const db = average === 0 ? -100 : 20 * Math.log10(average / 255);
+        setDbfs(db);
+      }, 50);
+
+      mediaRecorder.start();
       setIsRecording(true);
       setIsPaused(false);
+      setDuration(0);
+    } catch (err) {
+      console.error("Error accessing microphone:", err);
+      alert("Could not access microphone.");
+    }
+  };
+
+  const stopRecording = async () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+    }
+    clearInterval(meterIntervalRef.current);
+    setDbfs(-100);
+
+    // Save mocked meeting record
+    await db.meetings.add({
+      id: Math.random().toString(36).substring(2, 9),
+      title: `Meeting ${format(new Date(), 'MMM do, h:mm a')}`,
+      createdAt: Date.now(),
+      duration: duration,
+      transcript: "This is a placeholder transcript from the local recording.",
+      summary: "Local recording completed."
+    });
+
+    setIsRecording(false);
+    setIsPaused(false);
+    setDuration(0);
+  };
+
+  const togglePause = () => {
+    if (isPaused) {
+      mediaRecorderRef.current?.resume();
+      setIsPaused(false);
+    } else {
+      mediaRecorderRef.current?.pause();
+      setIsPaused(true);
+      setDbfs(-100);
+    }
+  };
+
+  const toggleRecord = () => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
     }
   };
 
@@ -77,7 +150,7 @@ export default function RecordView() {
             <div className="flex gap-4">
               {isRecording && (
                 <button 
-                  onClick={() => setIsPaused(!isPaused)}
+                  onClick={togglePause}
                   className="w-14 h-14 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-700 transition-colors"
                 >
                   <Pause size={24} className={isPaused ? 'fill-current' : ''} />
@@ -170,3 +243,4 @@ export default function RecordView() {
     </div>
   );
 }
+
