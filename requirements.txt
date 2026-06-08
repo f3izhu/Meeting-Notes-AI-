@@ -1,0 +1,9 @@
+faster-whisper>=1.1.0
+numpy>=1.26
+soundcard>=0.4.3
+requests>=2.31
+pytest>=8.0
+pyinstaller>=6.0
+pystray>=0.19
+pillow>=10.0
+cryptography>=42.0

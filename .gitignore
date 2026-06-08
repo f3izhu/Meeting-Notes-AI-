@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local app/user data
+outputs*/
+ouputrs/
+*.flag
+.ui_stop.flag
+.tmp_stop_test.flag
+.audit_stop.flag
+
+# Build artifacts
+build/
+dist/
+*.spec
+!packaging/*.spec
+*.exe
+*.msi
+*.zip
+
+# Local configs and secrets
+.env
+.env.*
+*.key
+*.pem
+*.pfx
+*.p12
+secrets/
+
+# OS/editor
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
+
