@@ -1,0 +1,6 @@
+{
+  "name": "Meeting Notes AI",
+  "description": "Local meeting assistant focused on speed and ease of use, with offline-first design.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
