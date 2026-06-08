@@ -1,12 +1,34 @@
 import { format } from 'date-fns';
-import { useStore, getTasksForDate } from '../store';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../lib/db';
 import { Mic2, Calendar, FileText, Plus, Bell, CheckCircle2, Circle, History, ArrowRight } from 'lucide-react';
 
 export default function DashboardView({ onStartMeeting }: { onStartMeeting: () => void }) {
-  const { tasks, meetings, toggleTask } = useStore();
-  const todayTasks = getTasksForDate(tasks, new Date());
-  
-  const meetingsList = Object.values(meetings).sort((a, b) => b.createdAt - a.createdAt).slice(0, 5);
+  const targetDayKey = format(new Date(), 'yyyy-MM-dd');
+
+  // Query tasks for today and any incomplete tasks from the past
+  const todayTasks = useLiveQuery(async () => {
+    const allTasks = await db.tasks.toArray();
+    return allTasks.filter(t => {
+      if (t.dayKey < targetDayKey) {
+        if (!t.completed) return true;
+        if (t.completedAt && format(t.completedAt, 'yyyy-MM-dd') === targetDayKey) return true;
+        return false;
+      }
+      return t.dayKey === targetDayKey;
+    }).sort((a, b) => a.createdAt - b.createdAt);
+  }, [targetDayKey]) || [];
+
+  const meetingsList = useLiveQuery(() => 
+    db.meetings.orderBy('createdAt').reverse().limit(5).toArray()
+  ) || [];
+
+  const toggleTask = async (id: string, currentlyCompleted: boolean) => {
+    await db.tasks.update(id, {
+      completed: !currentlyCompleted,
+      completedAt: !currentlyCompleted ? Date.now() : undefined
+    });
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in zoom-in-95 duration-300">
@@ -45,31 +67,34 @@ export default function DashboardView({ onStartMeeting }: { onStartMeeting: () =
               </div>
             ) : (
               <div className="space-y-3">
-                {todayTasks.map(task => (
-                  <div key={task.id} className="flex gap-3 p-3 hover:bg-slate-800/50 rounded-xl transition-colors group">
-                    <button 
-                      onClick={() => toggleTask(task.originalDayKey, task.id)}
-                      className="mt-0.5 text-slate-500 hover:text-indigo-400 transition-colors"
-                    >
-                      {task.completed ? <CheckCircle2 className="text-indigo-400" size={18} /> : <Circle size={18} />}
-                    </button>
-                    <div>
-                      <p className={`text-sm ${task.completed ? 'text-slate-500 line-through' : 'text-slate-200'}`}>
-                        {task.title}
-                      </p>
-                      <div className="flex gap-2 mt-1">
-                        {task.isCarriedOver && (
-                          <span className="flex items-center gap-1 text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-400">
-                            Carried Over
+                {todayTasks.map(task => {
+                  const isCarriedOver = task.dayKey < targetDayKey;
+                  return (
+                    <div key={task.id} className="flex gap-3 p-3 hover:bg-slate-800/50 rounded-xl transition-colors group">
+                      <button 
+                        onClick={() => toggleTask(task.id, task.completed)}
+                        className="mt-0.5 text-slate-500 hover:text-indigo-400 transition-colors"
+                      >
+                        {task.completed ? <CheckCircle2 className="text-indigo-400" size={18} /> : <Circle size={18} />}
+                      </button>
+                      <div>
+                        <p className={`text-sm ${task.completed ? 'text-slate-500 line-through' : 'text-slate-200'}`}>
+                          {task.title}
+                        </p>
+                        <div className="flex gap-2 mt-1">
+                          {isCarriedOver && (
+                            <span className="flex items-center gap-1 text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-400">
+                              Carried Over
+                            </span>
+                          )}
+                          <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
+                            {task.priority || 'Medium'}
                           </span>
-                        )}
-                        <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
-                          {task.priority || 'Medium'}
-                        </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
             <button className="w-full mt-4 py-2 border border-dashed border-slate-700 text-slate-400 rounded-xl text-sm font-medium hover:text-slate-200 hover:border-slate-600 hover:bg-slate-800/30 transition-colors flex items-center justify-center gap-2">

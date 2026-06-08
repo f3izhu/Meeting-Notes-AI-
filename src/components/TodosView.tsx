@@ -1,37 +1,61 @@
 import { useState } from 'react';
 import { format, addDays, subDays } from 'date-fns';
-import { useStore, Task, getTasksForDate } from '../store';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db, DbTask } from '../lib/db';
 import { CheckCircle2, Circle, ChevronLeft, ChevronRight, Calendar, Plus, Trash2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 export default function TodosView() {
-  const { tasks, toggleTask, addTask, deleteTask } = useStore();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [newTaskTitle, setNewTaskTitle] = useState('');
   
   const dayKey = format(selectedDate, 'yyyy-MM-dd');
-  const dayTasks = getTasksForDate(tasks, selectedDate);
+  
+  // Use dexie to query tasks with the carry-forward logic
+  const dayTasks = useLiveQuery(async () => {
+    const allTasks = await db.tasks.toArray();
+    return allTasks.filter(t => {
+      if (t.dayKey < dayKey) {
+        if (!t.completed) return true;
+        if (t.completedAt && format(t.completedAt, 'yyyy-MM-dd') === dayKey) return true;
+        return false;
+      }
+      return t.dayKey === dayKey;
+    }).sort((a, b) => a.createdAt - b.createdAt);
+  }, [dayKey]) || [];
 
   const handleNextDay = () => setSelectedDate(addDays(selectedDate, 1));
   const handlePrevDay = () => setSelectedDate(subDays(selectedDate, 1));
   const handleToday = () => setSelectedDate(new Date());
 
-  const handleAddTask = (e: React.FormEvent) => {
+  const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
     
-    const task: Task = {
+    await db.tasks.add({
       id: Math.random().toString(36).substring(2, 9),
       title: newTaskTitle.trim(),
       completed: false,
       priority: 'medium',
       createdAt: Date.now(),
       dueDate: selectedDate.getTime(),
-    };
+      dayKey,
+    });
     
-    addTask(dayKey, task);
     setNewTaskTitle('');
   };
+
+  const toggleTask = async (id: string, currentlyCompleted: boolean) => {
+    await db.tasks.update(id, {
+      completed: !currentlyCompleted,
+      completedAt: !currentlyCompleted ? Date.now() : undefined
+    });
+  };
+
+  const deleteTask = async (id: string) => {
+    await db.tasks.delete(id);
+  };
+
 
   return (
     <div className="h-full flex flex-col animate-in fade-in zoom-in-95 duration-300">
@@ -96,7 +120,7 @@ export default function TodosView() {
                   )}
                 >
                   <button 
-                    onClick={() => toggleTask(task.originalDayKey, task.id)}
+                    onClick={() => toggleTask(task.id, task.completed)}
                     className="mt-0.5 relative shrink-0"
                   >
                     {task.completed ? (
@@ -114,7 +138,7 @@ export default function TodosView() {
                       {task.title}
                     </p>
                     <div className="flex gap-2">
-                      {task.isCarriedOver && (
+                      {task.dayKey < dayKey && (
                         <span className="inline-block mt-1.5 text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-400">
                           Carried Over
                         </span>
@@ -133,7 +157,7 @@ export default function TodosView() {
                   </div>
                   
                   <button 
-                    onClick={() => deleteTask(task.originalDayKey, task.id)}
+                    onClick={() => deleteTask(task.id)}
                     className="shrink-0 p-1.5 rounded-md text-slate-600 hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all outline-none"
                     title="Delete task"
                   >
